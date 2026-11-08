@@ -1,0 +1,21 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 7
+
+    # config/ is not analysed: its env() values are typed as bool|string, which makes the files published by the framework fail
+    paths:
+        - app
+        - bootstrap/app.php
+        - database
+        - routes
+
+    # Without it, the casts of a model are only known when casts() says them in its return type
+    parseModelCastsMethod: true
+
+    ignoreErrors:
+        # The mixins of the models are in the files of ide-helper, which are generated and not in the repository
+        -
+            message: '#@mixin contains unknown class App\\Models\\IdeHelper#'
+            identifier: class.notFound

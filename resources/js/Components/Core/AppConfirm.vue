@@ -1,0 +1,50 @@
+<script setup lang="ts">
+import EventBus from '@/objects/EventBus.js'
+import { useConfirm } from '@/stores/confirm'
+import { storeToRefs } from 'pinia'
+import { markRaw, watch, type Component } from 'vue'
+import AppModal from '@/Components/Core/AppModal.vue'
+
+const { show, title, message, okText, cancelText, component } =
+  storeToRefs(useConfirm())
+
+let rawComponent: Component | undefined = undefined
+
+watch(component, (value) => {
+  if (!value) return
+  rawComponent = markRaw(value)
+})
+
+function onClick(value: boolean) {
+  if (value && component.value) {
+    // value = component.value.validate()
+
+    if (!value) return
+  }
+
+  EventBus.emit('confirmed', value)
+}
+</script>
+<template>
+  <AppModal
+    v-if="show"
+    :model-value="show"
+    :title="title"
+    modal
+    :persistent="false"
+    :ok-text="okText"
+    :cancel-text="cancelText"
+    width="600px"
+    @ok="onClick(true)"
+    @close="onClick(false)"
+  >
+    {{ message }}
+
+    <component
+      :is="rawComponent"
+      v-if="rawComponent"
+      ref="component"
+      class="my-3"
+    />
+  </AppModal>
+</template>

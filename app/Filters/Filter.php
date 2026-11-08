@@ -1,0 +1,513 @@
+<?php
+
+namespace App\Filters;
+
+use App\Interfaces\FilterableMorph;
+use App\Interfaces\HasCreatedByInterface;
+use Carbon\Carbon;
+use EloquentFilter\ModelFilter;
+use Exception;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+
+class Filter extends ModelFilter
+{
+    private const MIN_PREFIX = 'min_'; // Prefix used by front to indicate a min value in a range filter
+
+    private const MAX_PREFIX = 'max_'; // Prefix used by front to indicate a max value in a range filter
+
+    private const NOT_PREFIX = 'not_'; // Prefix used by front to indicate excluded values
+
+    private const WITH = 'with'; // Input key to specify eager load relations
+
+    private const HAVING = 'having'; // Filter by relationship existence
+
+    private const DOESNT_HAVE = 'doesnt_have'; // Filter by relationship absence
+
+    private const COUNT = 'count'; // Input key to specify counting relations
+
+    private const RANDOMIZE = 'randomize'; // Applies random order
+
+    private const SORT = 'sort'; // Sorting
+
+    private const LIMIT = 'limit'; // Limit results
+
+    /**
+     * Columns the global `search` input looks into. Each filter declares its own.
+     *
+     * @var array<int, string>
+     */
+    protected array $searchable = [];
+
+    /** @var array<int, string> */
+    private array $enumColumns;
+
+    /**
+     * @param  Builder<Model>  $query
+     * @param  array<string, mixed>  $input
+     * @param  bool  $relationsEnabled
+     */
+    public function __construct($query, array $input = [], $relationsEnabled = true)
+    {
+        parent::__construct($query, $input, $relationsEnabled);
+
+        $this->enumColumns = collect($this->query->getModel()->getCasts())
+            ->filter(fn (string $cast) => Str::startsWith($cast, 'App\Enums'))
+            ->keys()
+            ->toArray();
+    }
+
+    /**
+     * @return Builder<Model>
+     */
+    public function handle(): Builder
+    {
+        $query = parent::handle();
+
+        $this->applyRanges();
+
+        $this->applyNotFilters();
+
+        $this->applyWith();
+
+        $this->applyHaving();
+
+        $this->applyDoesntHave();
+
+        $this->applyConstants();
+
+        $this->applyCounts();
+
+        $this->applySorting();
+
+        $this->applyLimit();
+
+        return $query;
+    }
+
+    private function applyRanges(): void
+    {
+        collect(array_keys($this->input))
+            ->filter(fn (string $input) => Str::startsWith($input, [self::MIN_PREFIX, self::MAX_PREFIX]) && ! method_exists($this, Str::camel($input)))
+            ->map(fn (string $input) => $this->applyRange($input, $this->input[$input]));
+    }
+
+    private function applyNotFilters(): void
+    {
+        collect(array_keys($this->input))
+            ->filter(fn (string $input) => Str::startsWith($input, [self::NOT_PREFIX]) && ! method_exists($this, Str::camel($input)))
+            ->map(fn (string $input) => $this->applyNotFilter($input, $this->input[$input]));
+    }
+
+    private function applyWith(): void
+    {
+        $relations = collect($this->listInput(self::WITH))
+            ->mapWithKeys(fn ($relation, $key) => is_numeric($key) ? [$key => Str::camel($relation)] : [Str::camel($key) => $relation])
+            ->toArray();
+
+        $this->query->with($relations);
+    }
+
+    private function applyHaving(): void
+    {
+        collect($this->listInput(self::HAVING))
+            ->map(fn ($relation) => Str::camel($relation))
+            ->each(fn (string $relation) => $this->query->whereHas($relation));
+    }
+
+    private function applyDoesntHave(): void
+    {
+        collect($this->listInput(self::DOESNT_HAVE))
+            ->map(fn ($relation) => Str::camel($relation))
+            ->each(fn (string $relation) => $this->query->whereDoesntHave($relation));
+    }
+
+    private function applyConstants(): void
+    {
+        collect($this->enumColumns)
+            ->filter(fn (string $enumColumn) => $this->canFilterByConstant($enumColumn))
+            ->each(function (string $enumColumn) {
+                $value = $this->input[$enumColumn];
+                if (is_array($value)) {
+                    $this->query->whereIn($enumColumn, $value);
+                } else {
+                    $this->query->where($enumColumn, $value);
+                }
+            });
+    }
+
+    private function applyCounts(): void
+    {
+        $input = collect($this->listInput(self::COUNT))
+            ->map(fn ($relation) => Str::camel($relation));
+
+        $rootCounts = $input
+            ->filter(fn ($relation) => ! str_contains($relation, '.'))
+            ->toArray();
+
+        $nestedCounts = $input
+            ->filter(fn ($relation) => str_contains($relation, '.'))
+            ->mapWithKeys(function ($relation) {
+                $parts = explode('.', $relation);
+
+                return [$parts[0] => fn ($relation) => $relation->withCount($parts[count($parts) - 1])];
+            })
+            ->toArray();
+
+        if (count($nestedCounts)) {
+            $this->query->with($nestedCounts);
+        }
+
+        $this->query->withCount($rootCounts);
+    }
+
+    /**
+     * The values of an input that lists them (with, having, count...), which can also come as a single one.
+     *
+     * @return array<int|string, string>
+     */
+    private function listInput(string $key): array
+    {
+        return Arr::wrap($this->input[$key] ?? []);
+    }
+
+    /**
+     * @param  mixed  $value
+     */
+    private function applyRange(string $input, $value): void
+    {
+        // Clean up prefixes to determine the table's column name
+        $column = str_replace(self::MIN_PREFIX, '', str_replace(self::MAX_PREFIX, '', $input));
+
+        $operator = Str::startsWith($input, self::MIN_PREFIX)
+            ? '>='
+            : '<=';
+
+        if (isDateString($value)) {
+            try {
+                $date = Carbon::parse($value);
+                $dateString = $operator === '>='
+                    ? $date->startOfDay()->toDateTimeString()
+                    : $date->endOfDay()->toDateTimeString();
+
+                $this->query->where($column, $operator, $dateString);
+            } catch (Exception) {
+                // Not a date that can be filtered by
+            }
+        } else {
+            $this->query->where($column, $operator, (float) $value);
+        }
+    }
+
+    /**
+     * @param  mixed  $value
+     */
+    private function applyNotFilter(string $input, $value): void
+    {
+        // Clean up prefixes to determine the table's column name
+        $column = str_replace(self::NOT_PREFIX, '', $input);
+
+        if (is_array($value)) {
+            $this->whereIn($column, $value, 'and', true); // Where not in
+        } else {
+            $this->where($column, '!=', $value);
+        }
+    }
+
+    /**
+     * Orders by a 'sort' string if it's present in request
+     * This sort string must be with the format 'attribute|orderDirection'
+     * for example: a string 'name|asc' means: ordering by 'name' in 'ascending' order.
+     * The attribute has to be a column of the table, and the direction 'asc' or 'desc'. If it is not
+     * valid, it is ignored. By default, it will order by id and updated_at, both descending
+     */
+    private function applySorting(): void
+    {
+        $table = $this->query->getModel()->getTable();
+        $sort = $this->parseSort($table);
+
+        if ($this->input[self::RANDOMIZE] ?? false) {
+            $this->query->inRandomOrder();
+        } elseif ($sort) {
+            [$attribute, $direction] = $sort;
+
+            $this->query->getQuery()->orders = []; // clean up any previous ordering
+
+            $this->query->orderBy("$table.$attribute", $direction);
+
+            if ($attribute !== 'id') {
+                $this->query->orderByDesc("$table.id"); // Keeps the pages stable when the attribute has repeated values
+            }
+        } else {
+            $this->query
+                ->orderByDesc("$table.id")
+                ->orderByDesc("$table.updated_at"); // default ordering
+        }
+    }
+
+    /**
+     * The attribute and the direction of the 'sort' input, if it is valid.
+     *
+     * @return array{0: string, 1: 'asc'|'desc'}|null
+     */
+    private function parseSort(string $table): ?array
+    {
+        $sort = $this->input[self::SORT] ?? null;
+
+        if (! is_string($sort) || ! str_contains($sort, '|')) {
+            return null;
+        }
+
+        [$attribute, $direction] = explode('|', $sort);
+        $direction = strtolower($direction);
+
+        if (! in_array($direction, ['asc', 'desc'], true) || ! in_array($attribute, $this->columnsOf($table), true)) {
+            return null;
+        }
+
+        return [$attribute, $direction];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function columnsOf(string $table): array
+    {
+        static $columns = [];
+
+        return $columns[$table] ??= Schema::getColumnListing($table);
+    }
+
+    /**
+     * Apply limit
+     */
+    private function applyLimit(): void
+    {
+        $limit = $this->input[self::LIMIT] ?? null;
+
+        if ($limit) {
+            $this->query->limit($limit);
+        }
+    }
+
+    /**
+     * @param  mixed  $userIds
+     * @return Builder<Model>
+     */
+    public function createdBy($userIds): Builder
+    {
+        if ($this->query->getModel() instanceof HasCreatedByInterface) {
+            $this->whereIn('created_by', $userIds);
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * Lists just the deleted ones, in the models that can be soft deleted: the rest only list the ones that are not.
+     *
+     * @param  mixed  $value
+     * @return Builder<Model>
+     */
+    public function deleted($value): Builder
+    {
+        $model = $this->query->getModel();
+
+        if ($value && method_exists($model, 'getQualifiedDeletedAtColumn')) {
+            $this->query
+                ->withoutGlobalScope(SoftDeletingScope::class)
+                ->whereNotNull($model->getQualifiedDeletedAtColumn());
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $ids
+     * @return Builder<Model>
+     */
+    public function ids($ids): Builder
+    {
+        $this->filterMultiple('id', $ids);
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $ids
+     * @return Builder<Model>
+     */
+    public function exceptIds($ids): Builder
+    {
+        $this->whereIn('id', $ids, 'and', true);
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $id
+     * @return Builder<Model>
+     */
+    public function id($id): Builder
+    {
+        $this->where('id', $id);
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $modelType
+     * @return Builder<Model>
+     */
+    protected function modelType($modelType): Builder
+    {
+        $model = $this->query->getModel();
+
+        if (method_exists($model, 'getMorphColumn')) {
+            $column = $model->getMorphColumn();
+            $this->where("{$column}_type", modelByString($modelType));
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $modelId
+     * @return Builder<Model>
+     */
+    protected function model($modelId): Builder
+    {
+        $model = $this->query->getModel();
+
+        if ($model instanceof FilterableMorph) {
+            $column = $model->getMorphColumn();
+            $this->where("{$column}_id", $modelId);
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $values
+     * @return Builder<Model>
+     */
+    protected function filterMultiple(string $column, $values): Builder
+    {
+        if (is_string($values) && str_contains($values, ',')) {
+            $values = explode(',', $values);
+        }
+
+        if (! is_array($values)) {
+            $values = [$values];
+        }
+
+        return $this->whereIn($column, $values);
+    }
+
+    /**
+     * @param  string  $column
+     * @param  mixed  $values
+     * @param  string  $boolean
+     * @param  bool  $not
+     * @return Builder<Model>
+     */
+    public function whereIn($column, $values, $boolean = 'and', $not = false): Builder
+    {
+        if (empty($values)) {
+            return $this->query;
+        }
+
+        if (! is_array($values)) {
+            $values = [$values];
+        }
+
+        $values = collect($values)
+            ->filter() // TODO: filter 'null' strings
+            ->toArray();
+
+        $table = $this->query->getModel()->getTable();
+
+        if (count($values)) {
+            parent::whereIn("$table.$column", $values, $boolean, $not);
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $name
+     * @return Builder<Model>
+     */
+    public function name($name): Builder
+    {
+        foreach (Arr::wrap($name) as $value) {
+            $this->where('name', 'like', "%$value%");
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * Global search: every word typed has to be found in any of the searchable columns.
+     *
+     * @param  mixed  $value
+     * @return Builder<Model>
+     */
+    public function search($value): Builder
+    {
+        $words = Str::of(is_string($value) ? $value : '')->trim()->split('/\s+/', -1, PREG_SPLIT_NO_EMPTY);
+        $table = $this->query->getModel()->getTable();
+
+        foreach ($words as $word) {
+            $like = '%'.addcslashes($word, '\\%_').'%'; // The wildcards typed are searched as plain characters
+
+            $this->where(fn (Builder $query) => collect($this->searchable)
+                ->each(fn (string $column) => $query->orWhere("$table.$column", 'like', $like)));
+        }
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $value
+     * @return Builder<Model>
+     */
+    public function nullable(string $column, $value): Builder
+    {
+        $value
+            ? $this->whereNotNull($column)
+            : $this->whereNull($column);
+
+        return $this->query;
+    }
+
+    /**
+     * @param  mixed  $value
+     * @return Builder<Model>
+     */
+    /**
+     * @param  mixed  $value
+     * @param  Builder<Model>|null  $customBuilder
+     * @return Builder<Model>
+     */
+    public function boolean(string $column, $value, ?Builder $customBuilder = null): Builder
+    {
+        $builder = $customBuilder ?? $this;
+
+        $value
+            ? $builder->where(fn (Builder $q) => $q->where($column, '!=', 0)->orWhere($column, '!=', false))
+            : $builder->where(fn (Builder $q) => $q->where($column, 0)->orWhere($column, false)->orWhereNull($column));
+
+        return $this->query;
+    }
+
+    private function canFilterByConstant(string $column): bool
+    {
+        return ! method_exists($this, Str::camel($column))
+            && isset($this->input[$column]);
+    }
+}
