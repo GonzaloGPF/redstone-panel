@@ -1,7 +1,7 @@
 {
-  "name": "laravel/laravel",
+  "name": "gonzalogpf/redstone-panel",
   "type": "project",
-  "description": "The skeleton application for the Laravel framework.",
+  "description": "RedstonePanel: self-hosted control panel for a private Minecraft Bedrock server, built with Laravel, Inertia SSR and PrimeVue.",
   "keywords": [
     "laravel",
     "framework"

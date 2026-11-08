@@ -1,8 +1,48 @@
-# Laravel + Inertia SSR + PrimeVue boilerplate
+# RedstonePanel
 
-A starting point for admin-style web apps: Laravel on the back, a Vue 3 + TypeScript SPA with server side rendering on the front, [PrimeVue](https://primevue.org) components, and a reusable **Filter System** that powers every listing. It runs in Docker with [Laravel Sail](https://laravel.com/docs/sail).
+A small, self-hosted control panel for the private **Minecraft Bedrock** server I run on a VPS for my partner and me. It shows the state of the server, updates it to the latest Bedrock release with one click, and will grow into world management, in-game messages and activity charts.
 
-It comes with authentication (Breeze based), a profile page, English and Spanish translations and a complete users administration (list, create, edit and delete) that works as the reference for any new admin section.
+It is also a portfolio project: a real (if tiny) production app built with the same stack and standards I use at work — Laravel, Inertia with SSR, Vue 3 + TypeScript and PrimeVue — with tests, static analysis, CI and AI-assisted development conventions.
+
+> Status: early. The admin foundation (auth, users, roles, dashboard, i18n, theming) is done; the Minecraft features are being built. See the [roadmap](#roadmap).
+
+## Features
+
+**Planned for the server**
+
+- **Live status**: online / offline, version, MOTD, players connected and latency, read with the Bedrock *Unconnected Ping* (RakNet over UDP), cached and refreshed with Inertia polling.
+- **One-click updates**: compares the installed version with the latest one published by Mojang and runs the update script of the VPS (backup, download, swap, restart) from a queued job, streaming its log to the page.
+- **Activity chart**: players online over time, sampled by the scheduler.
+- **Worlds**: list, back up, restore and switch the active world.
+- **Messages**: `say` / `tellraw` to the players through the server console.
+- **Audit log**: who did what, and when.
+
+**Already in place (from my [Laravel + Inertia SSR + PrimeVue template](https://github.com/GonzaloGPF/laravel-inertia-ssr-primevue))**
+
+- Authentication, profile, roles (admin / user) and users administration with a trash.
+- A reusable **Filter System** that powers every listing (search, filters, sort and pagination in the url).
+- Dashboard with deferred props, skeletons and accessible charts.
+- Light / dark / system theme, English and Spanish.
+
+## Architecture
+
+```
+ Browser ── HTTPS ──▶ RedstonePanel (Laravel + Inertia SSR)
+                         │  queue / scheduler
+                         ├── UDP 19132 ──▶ bedrock_server   (status ping)
+                         └── SSH / sudo ─▶ update & backup scripts on the VPS
+```
+
+The status comes from the RakNet *unconnected ping*, the same UDP packet a Bedrock client sends to list a server: it needs no login nor access to the machine. `App\Interfaces\MinecraftServerInterface` has two implementations, chosen by `MINECRAFT_DRIVER`:
+
+| Driver | Class | For |
+| --- | --- | --- |
+| `bedrock` | `BedrockServerService` | The real server, at `MINECRAFT_HOST`:`MINECRAFT_PORT` (19132 by default) |
+| `fake` | `FakeServerService` | Tests, local development without the VPS and a public demo: believable data, no network |
+
+`ServerStatusService` caches the status for `MINECRAFT_STATUS_TTL` seconds (15), so the dashboard can poll it (every 30 s) without hammering the server.
+
+The panel never runs arbitrary shell input: every action on the server maps to a fixed, whitelisted script, run by a queued job and recorded in the audit log.
 
 ## Stack
 
@@ -206,6 +246,23 @@ The project is prepared for AI coding assistants with [Laravel Boost](https://la
 - `CLAUDE.md` and `AGENTS.md` hold the Boost guidelines. They are generated: `composer dump-autoload` refreshes them.
 - `.ai/rules/index.md` maps file globs to the project rules (the Filter System, the Vue pitfalls, how to verify the UI with browser tests...). Assistants read it before planning or editing. Rules are recorded with Boost's `record-rule` tool, and they are committed.
 - `.mcp.json` starts the Boost MCP server through Sail.
+
+## Roadmap
+
+- [x] Admin foundation: auth, users, roles, dashboard, i18n, theme
+- [x] RedstonePanel branding
+- [x] Logo, favicon and animated status mark
+- [x] Server status widget (Bedrock ping) and polling
+- [ ] Latest version check and update job with live log
+- [ ] Players-online sampling and activity chart
+- [ ] World backups, restore and switch
+- [ ] In-game messages
+- [ ] Audit log
+- [ ] Deployment to the VPS (Nginx + PHP-FPM or Docker, behind HTTPS)
+
+## Disclaimer
+
+RedstonePanel is a personal project, not an official Minecraft product, and it is not approved by or associated with Mojang or Microsoft.
 
 ## License
 

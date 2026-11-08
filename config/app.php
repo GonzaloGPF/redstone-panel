@@ -14,7 +14,7 @@ return [
     */
 
     'name' => env('APP_NAME', 'Laravel'),
-    'description' => 'My awesome app',
+    'description' => env('APP_DESCRIPTION', 'Self-hosted control panel for a private Minecraft Bedrock server'),
 
     /*
     |--------------------------------------------------------------------------

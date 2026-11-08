@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <title>RedstonePanel</title>
+  <style>
+    .trace rect { animation: signal 2.4s linear infinite; animation-delay: calc(var(--step) * 45ms); }
+    .lamp { animation: glow 2.4s ease-out infinite; animation-delay: 0.8s; }
+    @keyframes signal { 0%, 6% { fill: #fecaca; } 14%, 100% { fill: #dc2626; } }
+    @keyframes glow { 0%, 100% { filter: drop-shadow(0 0 0.4px #ef4444); } 12% { filter: drop-shadow(0 0 1.6px #f87171) brightness(1.25); } }
+    @media (prefers-reduced-motion: reduce) { .trace rect, .lamp { animation: none; } }
+  </style>
+  <path fill="#52525b" d="M1 0h14v1h1v14h-1v1H1v-1H0V1h1z"/>
+  <path fill="#27272a" d="M1 15h14v-1h1v1h-1v1H1z M15 1h1v14h-1z"/>
+  <path fill="#18181b" d="M2 2h12v12H2z"/>
+  <g class="trace" fill="#dc2626">
+    <rect x="2" y="9" width="1" height="1" style="--step:0"/>
+    <rect x="3" y="9" width="1" height="1" style="--step:1"/>
+    <rect x="4" y="9" width="1" height="1" style="--step:2"/>
+    <rect x="5" y="8" width="1" height="1" style="--step:3"/>
+    <rect x="5" y="7" width="1" height="1" style="--step:4"/>
+    <rect x="5" y="6" width="1" height="1" style="--step:5"/>
+    <rect x="5" y="5" width="1" height="1" style="--step:6"/>
+    <rect x="6" y="4" width="1" height="1" style="--step:7"/>
+    <rect x="7" y="5" width="1" height="1" style="--step:8"/>
+    <rect x="7" y="6" width="1" height="1" style="--step:9"/>
+    <rect x="7" y="7" width="1" height="1" style="--step:10"/>
+    <rect x="7" y="8" width="1" height="1" style="--step:11"/>
+    <rect x="7" y="9" width="1" height="1" style="--step:12"/>
+    <rect x="7" y="10" width="1" height="1" style="--step:13"/>
+    <rect x="7" y="11" width="1" height="1" style="--step:14"/>
+    <rect x="8" y="12" width="1" height="1" style="--step:15"/>
+    <rect x="9" y="11" width="1" height="1" style="--step:16"/>
+    <rect x="9" y="10" width="1" height="1" style="--step:17"/>
+  </g>
+  <g class="lamp">
+    <path fill="#ef4444" d="M10 8h3v3h-3z"/>
+    <path fill="#fecaca" d="M11 9h1v1h-1z"/>
+  </g>
+</svg>

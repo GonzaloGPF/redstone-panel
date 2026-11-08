@@ -4,7 +4,7 @@ import { computed } from 'vue'
 
 const items = computed(() => [
   {
-    label: 'Boilerplate',
+    label: 'RedstonePanel',
     icon: 'home',
   },
 ])

@@ -96,7 +96,8 @@ function expectDashboardLoaded($page): void
         $cards = statCards($page);
         $loaded = count($cards) === 4
             && count(array_filter($cards, fn (array $card) => $card['value'] !== null)) === 4
-            && chartPaint($page)['painted'] > 0;
+            && chartPaint($page)['painted'] > 0
+            && $page->script("document.querySelector('[data-server-status]')?.dataset.state") !== 'loading';
 
         if (! $loaded) {
             usleep(100_000);
@@ -259,7 +260,7 @@ test('the cards and the chart are a pulsing skeleton until the statistics arrive
 
     $skeletons = fn () => (int) $page->script("document.querySelectorAll('.p-skeleton').length");
 
-    expect($skeletons())->toBe(5) // The 4 cards and the chart
+    expect($skeletons())->toBe(7) // The 2 lines of the server status, the 4 cards and the chart
         ->and(array_column(statCards($page), 'value'))->each->toBeNull()
         ->and(chartPaint($page)['painted'])->toBe(0);
 
@@ -325,7 +326,7 @@ test('a regular user that lands on the dashboard gets no statistics', function (
 
     $page = visit(route('dashboard.show', absolute: false));
 
-    $page->assertSee('This is the dashboard')
+    $page->assertSee('Server status')
         ->assertDontSee('Total users')
         ->assertNoJavaScriptErrors();
 

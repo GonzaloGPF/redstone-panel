@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use App\Enums\Roles;
+use App\Interfaces\MinecraftServerInterface;
 use App\Models\User;
+use App\Services\Minecraft\BedrockServerService;
+use App\Services\Minecraft\FakeServerService;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Vite;
@@ -16,7 +19,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // The real Bedrock server of the VPS, or the fake one of the tests and the demo
+        $this->app->singleton(MinecraftServerInterface::class, fn () => match (config('minecraft.driver')) {
+            'bedrock' => new BedrockServerService(
+                config()->string('minecraft.host'),
+                config()->integer('minecraft.port'),
+                config()->float('minecraft.timeout'),
+            ),
+            default => new FakeServerService(config()->string('minecraft.host'), config()->integer('minecraft.port')),
+        });
     }
 
     /**
