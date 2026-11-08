@@ -28,10 +28,8 @@
 
         <title inertia>{{ config('app.name', 'RedstonePanel') }}</title>
 
-        <!-- Fonts -->
-        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+        <!-- Fonts: served from public/fonts (see resources/css/fonts.css). The icons are preloaded, as every page uses them -->
+        <link rel="preload" href="{{ asset('fonts/material-symbols-outlined.woff2') }}" as="font" type="font/woff2" crossorigin>
 
         <!-- The theme (the one the user chose, or the one of the system), before anything is painted: see the theme store -->
         <script>

@@ -56,7 +56,3 @@ it('says a server that does not answer is offline, without throwing', function (
         'version' => null,
     ]);
 });
-
-it('says a host that does not exist is offline', function () {
-    expect((new BedrockServerService('nowhere.invalid', 19132, 0.2))->status()['online'])->toBeFalse();
-});

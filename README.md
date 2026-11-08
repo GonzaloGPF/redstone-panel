@@ -94,6 +94,8 @@ Laravel serves the assets from the Vite dev server when `public/hot` exists, and
 | | |
 | --- | --- |
 | `vendor/bin/sail artisan test --compact` | Whole suite: unit, feature and browser tests |
+| `vendor/bin/sail artisan test --compact --parallel` | The same, in parallel processes: about 1.5 minutes instead of 4.5 |
+| `vendor/bin/sail artisan test --compact tests/Feature tests/Unit` | Without the browser tests: seconds, for the day to day |
 | `vendor/bin/sail bin pint` | PHP code style |
 | `vendor/bin/sail composer analyse` | Static analysis of the PHP code (Larastan, level 7: `phpstan.neon`) |
 | `vendor/bin/sail yarn eslint resources/js` | JS / TS / Vue lint |
@@ -236,6 +238,7 @@ This is not an access control: every endpoint still goes through its policy.
 
 - Forms use the components of `Components/Inputs` and `AppForm`.
 - Texts are translated: add them to `lang/en` and `lang/es`.
+- No third party is asked for anything: the fonts (Figtree and Material Symbols) are served from `public/fonts`, declared in `resources/css/fonts.css`. `tests/Browser/FontsTest.php` fails if a page asks another origin.
 - Use named routes (`route('users.index')`).
 - Add tests with every change, and verify the frontend with browser tests.
 

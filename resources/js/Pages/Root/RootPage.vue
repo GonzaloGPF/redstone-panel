@@ -17,7 +17,7 @@ import { Translator } from '@/objects/Translator'
     />
     <AppButton
       :label="Translator.tl('open_panel')"
-      icon="dashboard"
+      icon="monitor_heart"
       :href="route('dashboard.show')"
     />
   </div>
